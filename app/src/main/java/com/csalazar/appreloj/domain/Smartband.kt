@@ -1,6 +1,6 @@
 package com.csalazar.appreloj.domain
 
-data class SmartWatch (
+data class Smartband (
     val deviceName:String,
     val deviceAddress:String?,
     val rssi:Int,
@@ -9,7 +9,7 @@ data class SmartWatch (
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as SmartWatch
+        other as Smartband
 
         if (deviceName != other.deviceName) return false
         if (deviceAddress != other.deviceAddress) return false

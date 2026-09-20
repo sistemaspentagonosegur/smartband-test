@@ -1,79 +1,58 @@
 package com.csalazar.appreloj
 
-import android.Manifest
 import android.app.Application
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.le.ScanResult
-import android.os.Build
-import android.util.Log
-import androidx.annotation.RequiresApi
-import androidx.annotation.RequiresPermission
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import com.csalazar.appreloj.domain.SmartWatch
-import com.oudmon.ble.base.scan.BleScannerHelper
-import com.oudmon.ble.base.scan.ScanRecord
-import com.oudmon.ble.base.scan.ScanWrapperCallback
+import androidx.lifecycle.viewModelScope
+import com.csalazar.appreloj.domain.Smartband
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-class MainViewModel(application: Application) : AndroidViewModel(application), ScanWrapperCallback {
-    var scanCount : Int = 0
-    private val _patrolList = MutableStateFlow<List<SmartWatch>>(emptyList())
-    val patrolList: StateFlow<List<SmartWatch>> = _patrolList.asStateFlow()
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val scanner = ScannerRepository.getInstance(application)
+    private val smartbandRepository = SmartbandRepository.getInstance(application)
 
-    override fun onStart() {
-        Log.d("BLUECS", "ONSTART")
-    }
+    private val _devices = MutableStateFlow<List<Smartband>>(emptyList())
+    val devices: StateFlow<List<Smartband>> = _devices.asStateFlow()
 
-    override fun onStop() {
-        Log.d("BLUECS", "ONSTOP")
-    }
+    private val _bluetoothEvents = MutableStateFlow<List<BluetoothConnectionEvent>>(emptyList())
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    override fun onLeScan(
-        device: BluetoothDevice?,
-        rssi: Int,
-        p2: ByteArray?
-    ) {
-        if (device != null && (!device.name.isNullOrEmpty())) {
-//                if (device.name.startsWith("O_")||device.name.startsWith("Q_")) {
-//
-//                }
+    val bluetoothEvents = _bluetoothEvents.asStateFlow()
 
-            val smartWatch = SmartWatch(device.name, device.address, rssi)
-            Log.i("1111",device.name+"---"+ device.address)
+    private val bleRepository = EventRepository.getInstance(application)
 
-            if (!patrolList.value.contains(smartWatch)) {
-                scanCount++
-                _patrolList.update { currentList ->
-                    val listNuevo = listOf(smartWatch, *currentList.toTypedArray())
-                    listNuevo.sortedByDescending { it.rssi }
-                }
 
-                if (scanCount > 30) {
-                    BleScannerHelper.getInstance().stopScan(this)
-                }
+    init {
+        viewModelScope.launch {
+            bleRepository.bluetoothEvents.collect { event ->
+                handleBleEvent(event)
             }
         }
     }
 
-    override fun onScanFailed(p0: Int) {
-        Log.d("BLUECS", "$p0")
+    private fun handleBleEvent(event: BluetoothConnectionEvent) {
+        _bluetoothEvents.update {
+            old ->
+                old.toMutableList().apply {
+                    add(event)
+                }
+        }
+    }
+    private var scanJob : Job? = null
+
+    fun startScanning() {
+        scanJob ?.cancel()
+        scanJob = viewModelScope.launch {
+            scanner.scanDevices().collect { updatedList ->
+                _devices.value = updatedList
+            }
+        }
     }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    override fun onParsedData(
-        p0: BluetoothDevice?,
-        p1: ScanRecord?
-    ) {
-        Log.d("BLUECS", "onParsedData ${p0?.bluetoothClass}")
-    }
-
-    override fun onBatchScanResults(p0: List<ScanResult?>?) {
-        Log.d("BLUECS", "onBatchScanResults")
+    fun connectDevice(smartband: Smartband) {
+        smartbandRepository.connectSmartband(smartband)
     }
 }
